@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
 
-## Setup for NanoPi Neo2 H5 based devices
+## Setup for NanoPi M4 based devices
 DEVICE_SUPPORT_TYPE="O" # First letter (Community Porting|Supported Officially|OEM)
 DEVICE_STATUS="P"       # First letter (Planned|Test|Maintenance)
 
@@ -11,8 +11,13 @@ ARCH="armhf"
 BUILD="armv7"
 UINITRD_ARCH="arm64"
 
+# Plymouth theme?
+PLYMOUTH_THEME="volumio-player"
+# Debug image?
+DEBUG_IMAGE=no
+
 ### Device information
-DEVICENAME="NanoPi M4"
+DEVICENAME="NanoPi M4B"
 # This is useful for multiple devices sharing the same/similar kernel
 DEVICEFAMILY="rk3399"
 # tarball from DEVICEFAMILY repo to use
@@ -30,7 +35,7 @@ BOOT_START=21
 BOOT_END=378
 BOOT_TYPE=msdos          # msdos or gpt
 BOOT_USE_UUID=yes        # Add UUID to fstab
-INIT_TYPE="init.nextarm" # init.{x86/nextarm/nextarm_tvbox}
+INIT_TYPE="initv3" 
 
 # Modules that will be added to intramsfs
 MODULES=("overlay" "overlayfs" "squashfs" "nls_cp437" "fuse")
@@ -46,34 +51,12 @@ write_device_files() {
   cp -dR "${PLTDIR}/${DEVICE}/boot" "${ROOTFSMNT}"
   cp -pdR "${PLTDIR}/${DEVICE}/lib/modules" "${ROOTFSMNT}/lib"
   cp -pdR "${PLTDIR}/${DEVICE}/lib/firmware" "${ROOTFSMNT}/lib"
+  cp -pdR "${PLTDIR}/${DEVICE}/lib/systemd" "${ROOTFSMNT}/lib"
   cp -pdR "${PLTDIR}/${DEVICE}/u-boot" "${ROOTFSMNT}"
 
-  cp -pdR "${PLTDIR}/${DEVICE}/misc/brcm_patchram_plus_rk3399" "${ROOTFSMNT}/usr/local/bin/"
-  cp -pdR "${PLTDIR}/${DEVICE}/misc/rk3399-bluetooth.service" "${ROOTFSMNT}/lib/systemd/system/"
-
-  log "Creating temp targets for .deb unpacking"
-  [ -e "tmp_boot-lib-dtb" ] && rm -r tmp_boot-lib-dtb
-  [ -e "tmp_firmware" ] && rm -r tmp_firmware
-  [ -e "tmp_u-boot" ] && rm -r tmp_u-boot
-  mkdir tmp_boot-lib-dtb
-  mkdir tmp_firmware
-  mkdir tmp_u-boot
-
-  log "Unpacking boot, lib and dtb from Armbian  .deb file..." "info"
-  dpkg-deb -R ${PLTDIR}/${DEVICE}/armbian/linux-image*.deb tmp_boot-lib-dtb
-  cp -dR tmp_boot-lib-dtb/boot/vmlinuz-* "${ROOTFSMNT}/boot/Image"
-  cp -dR tmp_boot-lib-dtb/boot/config* "${ROOTFSMNT}/boot/"
-  cp -pdR tmp_boot-lib-dtb/lib/modules "${ROOTFSMNT}/lib"
-  cp -pdR tmp_boot-lib-dtb/usr/lib/linux-image*/rockchip/* "${ROOTFSMNT}/boot/dtb/rockchip"
-
-  log "Unpacking firmware from Armbian .deb file..." "info"
-  dpkg-deb -R ${PLTDIR}/${DEVICE}/armbian/armbian-firmware*.deb tmp_firmware
-  cp -pdR "tmp_firmware/lib/firmware" "${ROOTFSMNT}/lib"
-
-  log "Unpacking u-boot from Armbian .deb file..." "info"
-  dpkg-deb -R ${PLTDIR}/${DEVICE}/armbian/linux-u-boot* tmp_u-boot
-  cp tmp_u-boot/usr/lib/linux-u-boot*/* ${PLTDIR}/${DEVICE}/u-boot
-
+  log "Mark the boot partition with nanopim4 '${VERSION}'"
+  log "${VERSION}" > "${ROOTFSMNT}"/boot/nanopim4.version
+  
 }
 
 write_device_bootloader() {
@@ -92,25 +75,40 @@ device_image_tweaks() {
 
 # Will be run in chroot - Pre initramfs
 device_chroot_tweaks_pre() {
+
+
+  log "Creating boot parameters from template"
+  sed -i "s/imgpart=UUID=/imgpart=UUID=${UUID_IMG}/g" /boot/armbianEnv.txt
+  sed -i "s/bootpart=UUID=/bootpart=UUID=${UUID_BOOT}/g" /boot/armbianEnv.txt
+  sed -i "s/datapart=UUID=/datapart=UUID=${UUID_DATA}/g" /boot/armbianEnv.txt
+
+# Configure kernel parameters, overrule $verbosity in order to keep the template (platform files) untouched
+  if [ "${DEBUG_IMAGE}" == "yes" ]; then
+    log "Configuring DEBUG kernel parameters" "cfg"
+    sed -i "s/loglevel=\${verbosity}/loglevel=8 nosplash break= use_kmsg=yes/" /boot/boot.cmd
+  else
+    log "Configuring default kernel parameters" "cfg"
+    sed -i "s/loglevel=\${verbosity}/quiet loglevel=0/" /boot/boot.cmd
+
+    if [[ -n "${PLYMOUTH_THEME}" ]]; then
+      log "Adding splash kernel parameters" "cfg"
+      sed -i "s/loglevel=0/loglevel=0 splash plymouth.ignore-serial-consoles initramfs.clear/" /boot/boot.cmd
+    fi
+  fi
+
   #log "Performing device_chroot_tweaks_pre" "ext"
   log "Fixing armv8 deprecated instruction emulation with armv7 rootfs"
   cat <<-EOF >>/etc/sysctl.conf
 abi.cp15_barrier=2
 EOF
 
-  log "Creating boot parameters from template"
-  sed -i "s/imgpart=UUID=/imgpart=UUID=${UUID_IMG}/g" /boot/varsVolumio.txt
-  sed -i "s/bootpart=UUID=/bootpart=UUID=${UUID_BOOT}/g" /boot/varsVolumio.txt
-  sed -i "s/datapart=UUID=/datapart=UUID=${UUID_DATA}/g" /boot/varsVolumio.txt
-
-  # log "Adding gpio group and udev rules"
-  # groupadd -f --system gpio
-  # usermod -aG gpio volumio
-  # #TODO: Refactor to cat
-  # touch /etc/udev/rules.d/99-gpio.rules
-  # echo "SUBSYSTEM==\"gpio\", ACTION==\"add\", RUN=\"/bin/sh -c '
-  #         chown -R root:gpio /sys/class/gpio && chmod -R 770 /sys/class/gpio;\
-  #         chown -R root:gpio /sys$DEVPATH && chmod -R 770 /sys$DEVPATH    '\"" >/etc/udev/rules.d/99-gpio.rules
+  log "Adding gpio group and udev rules"
+  groupadd -f --system gpio
+  usermod -aG gpio volumio
+  # Works with newer kernels as well
+  cat <<-EOF >/etc/udev/rules.d/99-gpio.rules
+	SUBSYSTEM=="gpio*", PROGRAM="/bin/sh -c 'find -L /sys/class/gpio/ -maxdepth 2 -exec chown root:gpio {} \; -exec chmod 770 {} \; || true'"
+	EOF
 }
 
 # Will be run in chroot - Post initramfs
@@ -126,10 +124,10 @@ device_image_tweaks_post() {
     mkimage -v -A "${UINITRD_ARCH}" -O linux -T ramdisk -C none -a 0 -e 0 -n uInitrd -d "${ROOTFSMNT}"/boot/volumio.initrd "${ROOTFSMNT}"/boot/uInitrd
     rm "${ROOTFSMNT}"/boot/volumio.initrd
   fi
-  log "Creating boot.scr from bootVolumio.cmd" "info"
+  log "Creating boot.scr from boot.cmd" "info"
   if [[ -f "${ROOTFSMNT}"/boot/boot.cmd ]]; then
     log "Creating boot.scr"
-    mkimage -A arm -T script -C none -d "${ROOTFSMNT}"/boot/bootVolumio.cmd "${ROOTFSMNT}"/boot/boot.scr
+    mkimage -A arm -T script -C none -d "${ROOTFSMNT}"/boot/boot.cmd "${ROOTFSMNT}"/boot/boot.scr
   fi
 
 }

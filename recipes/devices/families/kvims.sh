@@ -9,6 +9,9 @@ ARCH="armhf"
 BUILD="armv7"
 UINITRD_ARCH="arm"
 
+### Build image with initramfs debug info?
+DEBUG_IMAGE="no"
+
 ### Device information
 # This is useful for multiple devices sharing the same/similar kernel
 #DEVICENAME="not set here"
@@ -23,6 +26,8 @@ VOLVARIANT=no # Custom Volumio (Motivo/Primo etc)
 MYVOLUMIO=no
 VOLINITUPDATER=yes
 KIOSKMODE=yes
+KIOSKBROWSER=vivaldi
+PLYMOUTH_THEME="volumio-player"
 
 ## Partition info
 BOOT_START=16
@@ -30,7 +35,8 @@ BOOT_END=80
 BOOT_TYPE=msdos          # msdos or gpt
 BOOT_USE_UUID=yes        # Add UUID to fstab
 IMAGE_END=3800
-INIT_TYPE="init.nextarm" # init.{x86/nextarm/nextarm_tvbox}
+INIT_TYPE="initv3"
+PLYMOUTH_THEME="volumio-player"
 
 # Modules that will be added to intramsfs
 MODULES=("overlay" "squashfs" "nls_cp437")
@@ -85,7 +91,7 @@ write_device_files() {
 
   log "Copying triggerhappy configuration"
   cp -pR "${PLTDIR}/${DEVICEBASE}/etc/triggerhappy" "${ROOTFSMNT}/etc"
-
+	
 }
 
 write_device_bootloader() {
@@ -104,12 +110,33 @@ device_image_tweaks() {
 
 # Will be run in chroot - Pre initramfs
 device_chroot_tweaks_pre() {
-  log "Performing device_chroot_tweaks_pre" "ext"
+  log "Performing device_chroot_tweaks_pre" "cfg"
 
-  log "Creating boot parameters from template"
+  log "Configuring UUID boot parameters" "info"
+  
   sed -i "s/#imgpart=UUID=/imgpart=UUID=${UUID_IMG}/g" /boot/env.system.txt
   sed -i "s/#bootpart=UUID=/bootpart=UUID=${UUID_BOOT}/g" /boot/env.system.txt
   sed -i "s/#datapart=UUID=/datapart=UUID=${UUID_DATA}/g" /boot/env.system.txt
+
+  log "Replace 'bootconfig' by 'uuidconfig'" "info"
+  sed -i "s/bootconfig/uuidconfig/" /boot/boot.ini
+  
+  log "Remove default plymouth.ignore-serial-consoles " "info"
+  sed -i "s/plymouth.ignore-serial-consoles//" /boot/boot.ini
+  
+  if [ "${DEBUG_IMAGE}" == "yes" ]; then
+    log "Configuring DEBUG image" "info"
+    sed -i "s/quiet loglevel=0 splash/loglevel=8 nosplash break= use_kmsg=yes/" /boot/env.system.txt
+  else
+    log "Configuring default kernel parameters" "info"
+    if [[ -n "${PLYMOUTH_THEME}" ]]; then
+      log "Adding splash kernel parameters" "info"      
+      sed -i "s/loglevel=0/loglevel=0 splash plymouth.ignore-serial-consoles initramfs.clear/" /boot/env.system.txt
+    else
+      log "No splash screen, just quiet" "info"
+      sed -i "s/loglevel=0 splash/loglevel=0 nosplash/" /boot/env.system.txt
+    fi  
+  fi  
 
   log "Fixing armv8 deprecated instruction emulation, allow dmesg"
   cat <<-EOF >>/etc/sysctl.conf
@@ -121,6 +148,11 @@ EOF
 
   log "Adding default wifi"
   echo "dhd" >>"/etc/modules"
+
+  
+
+  log "Disabling login prompt"
+  systemctl disable getty@tty1.service
 }
 
 # Will be run in chroot - Post initramfs
@@ -155,8 +187,9 @@ nv_by_chip=5 \
 device_image_tweaks_post() {
   log "Running device_image_tweaks_post" "ext"
   log "Creating uInitrd from 'volumio.initrd'" "info"
-  if [[ -f "${ROOTFSMNT}"/boot/volumio.initrd ]]; then
-    mkimage -v -A "${UINITRD_ARCH}" -O linux -T ramdisk -C none -a 0 -e 0 -n uInitrd -d "${ROOTFSMNT}"/boot/volumio.initrd "${ROOTFSMNT}"/boot/uInitrd
-    rm "${ROOTFSMNT}"/boot/volumio.initrd
+  if [[ -f "${ROOTFSMNT}/boot/volumio.initrd" ]]; then
+    mv "${ROOTFSMNT}/boot/volumio.initrd" ${SRC}
+    mkimage -v -A "${UINITRD_ARCH}" -O linux -T ramdisk -C none -a 0 -e 0 -n uInitrd -d "${SRC}/volumio.initrd" "${ROOTFSMNT}/boot/uInitrd"
+    rm "${SRC}/volumio.initrd"
   fi
 }
