@@ -1,38 +1,40 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
 
-## Setup for NanoPi H5 based devices
+## Setup for Radxa Rock Pi S
 DEVICE_SUPPORT_TYPE="C" # First letter (Community Porting|Supported Officially|OEM)
-DEVICE_STATUS="P"       # First letter (Planned|Test|Maintenance)
+DEVICE_STATUS="T"       # First letter (Planned|Test|Maintenance)
 
 # Base system
 BASE="Debian"
 ARCH="armhf"
 BUILD="armv7"
-UINITRD_ARCH="arm64" # Instruct mkimage to use the correct architecture on arm{64} devices
+UINITRD_ARCH="arm64"
 
 ### Device information
+DEVICENAME="RockPi-S" # Pretty name
 # This is useful for multiple devices sharing the same/similar kernel
 DEVICEFAMILY="armbian"
 # tarball from DEVICEFAMILY repo to use
 #DEVICEBASE=${DEVICE} # Defaults to ${DEVICE} if unset
-DEVICEREPO="https://github.com/volumio/platform-nanopi-${DEVICEFAMILY}"
+DEVICEREPO="https://github.com/volumio/platform-rockpi-s-${DEVICEFAMILY}"
 
 ### What features do we want to target
 # TODO: Not fully implement
 VOLVARIANT=no # Custom Volumio (Motivo/Primo etc)
 MYVOLUMIO=no
 VOLINITUPDATER=yes
+DISABLE_DISPLAY=yes
 
 ## Partition info
 BOOT_START=20
 BOOT_END=148
 BOOT_TYPE=msdos          # msdos or gpt
-BOOT_USE_UUID=no         # Add UUID to fstab
+BOOT_USE_UUID=yes        # Add UUID to fstab
 INIT_TYPE="initv3"
 
 # Modules that will be added to intramsfs
-MODULES=("overlay" "overlayfs" "squashfs" "nls_cp437" "nls_iso8859_1")
+MODULES=("overlay" "overlayfs" "squashfs" "nls_cp437" "fuse" "nls_iso8859_1")
 # Packages that will be installed
 PACKAGES=("bluez-firmware" "bluetooth" "bluez" "bluez-tools")
 
@@ -44,21 +46,28 @@ write_device_files() {
   cp -dR "${PLTDIR}/${DEVICE}/boot" "${ROOTFSMNT}"
   cp -pdR "${PLTDIR}/${DEVICE}/lib/modules" "${ROOTFSMNT}/lib"
   cp -pdR "${PLTDIR}/${DEVICE}/lib/firmware" "${ROOTFSMNT}/lib"
+
+  log "copy alsa plugin" "ext"
+  cp -r "${PLTDIR}/${DEVICE}/volumio/s2mono/libasound_module_pcm_s2mono.so" "${ROOTFSMNT}/usr/lib/arm-linux-gnueabihf/alsa-lib"
+
+  log "copy s2mono plugin" "ext"
+  mkdir -p "${ROOTFSMNT}/data/plugins/audio_interface"
+  cp -r "${PLTDIR}/${DEVICE}/volumio/volumio-plugin/s2mono" "${ROOTFSMNT}/data/plugins/audio_interface"
+
+  log "copy yandex-music plugin" "ext"
+  mkdir -p "${ROOTFSMNT}/data/plugins/music_service"
+  cp -r "${PLTDIR}/${DEVICE}/volumio/volumio-plugin/yandex_music" "${ROOTFSMNT}/data/plugins/music_service"
 }
 
 write_device_bootloader() {
   log "Running write_device_bootloader" "ext"
 
-  dd if="${PLTDIR}/${DEVICE}/u-boot/idbloader.bin" of="${LOOP_DEV}" seek=64 conv=notrunc
-  dd if="${PLTDIR}/${DEVICE}/u-boot/uboot.img" of="${LOOP_DEV}" seek=16384 conv=notrunc
-  dd if="${PLTDIR}/${DEVICE}/u-boot/trust.bin" of="${LOOP_DEV}" seek=24576 conv=notrunc
+  dd if="${PLTDIR}/${DEVICE}/u-boot/u-boot-rockchip.bin" of="${LOOP_DEV}" seek=64 conv=notrunc status=none
 }
 
 # Will be called by the image builder for any customisation
 device_image_tweaks() {
-	log "Copying custom initramfs script functions" "cfg"
-	[ -d ${ROOTFSMNT}/root/scripts ] || mkdir ${ROOTFSMNT}/root/scripts
-	cp "${SRC}/scripts/initramfs/custom/non-uuid-devices/custom-functions" ${ROOTFSMNT}/root/scripts
+  :
 }
 
 ### Chroot tweaks
@@ -70,16 +79,31 @@ device_chroot_tweaks() {
 # Will be run in chroot - Pre initramfs
 device_chroot_tweaks_pre() {
   log "Performing device_chroot_tweaks_pre" "ext"
+  log "Fixing armv8 deprecated instruction emulation with armv7 rootfs"
+  cat <<-EOF >>/etc/sysctl.conf
+abi.cp15_barrier=2
+EOF
 
   echo "Install device tree compiler with overlays support"
   wget -P /tmp http://ftp.debian.org/debian/pool/main/d/device-tree-compiler/device-tree-compiler_1.4.7-4_armhf.deb
   dpkg -i /tmp/device-tree-compiler_1.4.7-4_armhf.deb
   rm /tmp/device-tree-compiler_1.4.7-4_armhf.deb
 
-  log "Fixing armv8 deprecated instruction emulation with armv7 rootfs"
-  cat <<-EOF >>/etc/sysctl.conf
-abi.cp15_barrier=2
-EOF
+  log "Creating boot parameters from template"
+  sed -i "s/rootdev=UUID=/rootdev=UUID=${UUID_BOOT}/g" /boot/armbianEnv.txt
+  sed -i "s/imgpart=UUID=/imgpart=UUID=${UUID_IMG}/g" /boot/armbianEnv.txt
+  sed -i "s/bootpart=UUID=/bootpart=UUID=${UUID_BOOT}/g" /boot/armbianEnv.txt
+  sed -i "s/datapart=UUID=/datapart=UUID=${UUID_DATA}/g" /boot/armbianEnv.txt
+
+  log "Adding gpio group and udev rules"
+  groupadd -f --system gpio
+  usermod -aG gpio volumio
+  # Works with newer kernels as well
+  cat <<-EOF >/etc/udev/rules.d/99-gpio.rules
+	SUBSYSTEM=="gpio*", PROGRAM="/bin/sh -c 'find -L /sys/class/gpio/ -maxdepth 2 -exec chown root:gpio {} \; -exec chmod 770 {} \; || true'"
+	EOF
+  log "Fix for Volumio Remote updater"
+  sed -i '10i\RestartSec=5' /lib/systemd/system/volumio-remote-updater.service
 }
 
 # Will be run in chroot - Post initramfs
