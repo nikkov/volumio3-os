@@ -36,7 +36,7 @@ INIT_TYPE="initv3"
 # Modules that will be added to intramsfs
 MODULES=("overlay" "overlayfs" "squashfs" "nls_cp437" "fuse" "nls_iso8859_1")
 # Packages that will be installed
-PACKAGES=("bluez-firmware" "bluetooth" "bluez" "bluez-tools")
+PACKAGES=("bluez-firmware")
 
 ### Device customisation
 # Copy the device specific files (Image/DTS/etc..)
@@ -85,7 +85,7 @@ abi.cp15_barrier=2
 EOF
 
   echo "Install device tree compiler with overlays support"
-  wget -P /tmp http://ftp.debian.org/debian/pool/main/d/device-tree-compiler/device-tree-compiler_1.4.7-4_armhf.deb
+  wget -P /tmp http://archive.debian.org/debian/pool/main/d/device-tree-compiler/device-tree-compiler_1.4.7-4_armhf.deb
   dpkg -i /tmp/device-tree-compiler_1.4.7-4_armhf.deb
   rm /tmp/device-tree-compiler_1.4.7-4_armhf.deb
 
