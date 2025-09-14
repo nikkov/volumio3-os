@@ -34,7 +34,7 @@ BOOT_USE_UUID=yes        # Add UUID to fstab
 INIT_TYPE="initv3"
 
 # Modules that will be added to intramsfs
-MODULES=("overlay" "overlayfs" "squashfs" "nls_cp437" "fuse" "nls_iso8859_1")
+MODULES=("overlay" "overlayfs" "squashfs" "nls_cp437" "fuse")
 # Packages that will be installed
 PACKAGES=("bluez-firmware")
 
