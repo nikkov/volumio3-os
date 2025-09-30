@@ -36,7 +36,7 @@ PLYMOUTH_THEME="volumio-player"
 ## Partition info
 BOOT_START=17
 BOOT_END=273
-IMAGE_END=4369     # BOOT_END + 4096 MiB (/img squashfs)
+IMAGE_END=3985     # BOOT_END + 3712 MiB (/img squashfs)
 BOOT_TYPE=msdos          # msdos or gpt
 BOOT_USE_UUID=yes        # Add UUID to fstab
 INIT_TYPE="initv3"
@@ -44,7 +44,7 @@ INIT_TYPE="initv3"
 # Modules that will be added to intramsfs
 MODULES=("overlay" "overlayfs" "squashfs" "nls_cp437"  "fuse")
 # Packages that will be installed
-PACKAGES=("bluez-firmware")
+PACKAGES=("lirc" "fbset" "mc" "abootimg" "bluez-firmware" "linux-base" "triggerhappy")
 
 ### Device customisation
 # Copy the device specific files (Image/DTS/etc..)
@@ -85,6 +85,23 @@ EOF
   sed -i "s/imgpart=UUID=/imgpart=UUID=${UUID_IMG}/g" /boot/armbianEnv.txt
   sed -i "s/bootpart=UUID=/bootpart=UUID=${UUID_BOOT}/g" /boot/armbianEnv.txt
   sed -i "s/datapart=UUID=/datapart=UUID=${UUID_DATA}/g" /boot/armbianEnv.txt
+
+  log "Deactivate Armbian bootlogo and consolearg settings" "info"
+  sed -i "s/splash=verbose//" /boot/boot.cmd
+  sed -i "s/splash plymouth.ignore-serial-consoles//" /boot/boot.cmd
+
+  log "Configure debug or default kernel parameters" "cfg"
+  if [ "${DEBUG_IMAGE}" == "yes" ]; then
+    log "Configuring DEBUG kernel parameters" "info"
+    sed -i "s/loglevel=\${verbosity}/loglevel=8 nosplash break= use_kmsg=yes/" /boot/boot.cmd
+  else
+    log "Configuring default kernel parameters" "info"
+    sed -i "s/loglevel=\${verbosity}/quiet loglevel=0/" /boot/boot.cmd
+     if [[ -n "${PLYMOUTH_THEME}" ]]; then
+      log "Adding splash kernel parameters" "cfg"
+      sed -i "s/loglevel=0/loglevel=0 splash plymouth.ignore-serial-consoles initramfs.clear/" /boot/boot.cmd
+    fi
+  fi
 
   log "Adding gpio group and udev rules"
   groupadd -f --system gpio
