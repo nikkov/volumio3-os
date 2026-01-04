@@ -113,11 +113,11 @@ device_image_tweaks() {
 		wpa_passphrase=volumio2
 	EOF
 
-	log "Adding archive.raspberrypi debian repo" "info"
+	log "Adding archive2.volumio debian repo" "info"
 	cat <<-EOF >"${ROOTFSMNT}/etc/apt/sources.list.d/raspi.list"
-		deb http://archive.raspberrypi.org/debian/ buster main ui
+		deb http://archive2.volumio.org/debian/ buster main ui
 		# Uncomment line below then 'apt-get update' to enable 'apt-get source'
-		#deb-src http://archive.raspberrypi.org/debian/ buster main ui
+		#deb-src http://archive2.volumio.org/debian/ buster main ui
 	EOF
 
 	# raspberrypi-{kernel,bootloader} packages update kernel & firmware files
@@ -189,9 +189,10 @@ device_chroot_tweaks_pre() {
 		[6.1.70]="fc9319fda550a86dc6c23c12adda54a0f8163f22|master|1712"
 		[6.1.77]="5fc4f643d2e9c5aa972828705a902d184527ae3f|master|1730"
 		[6.6.30]="3b768c3f4d2b9a275fafdb53978f126d7ad72a1a|master|1763"
+		[6.6.62]="9a9bda382acec723c901e5ae7c7f415d9afbf635|master|1816"
 	)
 	# Version we want
-	KERNEL_VERSION="6.6.30"
+	KERNEL_VERSION="6.6.62"
 
 	MAJOR_VERSION=$(echo "$KERNEL_VERSION" | cut -d '.' -f 1)
 	MINOR_VERSION=$(echo "$KERNEL_VERSION" | cut -d '.' -f 2)

@@ -2,7 +2,7 @@
 # shellcheck disable=SC2034
 
 ## Setup for Raspberry Pi
-DEVICE_SUPPORT_TYPE="S" # First letter (Community Porting|Supported Officially|OEM)
+DEVICE_SUPPORT_TYPE="O" # First letter (Community Porting|Supported Officially|OEM)
 DEVICE_STATUS="T"       # First letter (Planned|Test|Maintenance)
 
 # Base system
@@ -16,29 +16,29 @@ DEBUG_IMAGE="no" # yes/no or empty. Also changes SHOW_SPLASH in cmdline.txt
 ### Device information
 # Used to identify devices (VOLUMIO_HARDWARE) and keep backward compatibility
 #VOL_DEVICE_ID="pi"
-DEVICENAME="Raspberry Pi"
+DEVICENAME="CM5"
 # This is useful for multiple devices sharing the same/similar kernel
-DEVICEFAMILY="raspberry"
+#DEVICEFAMILY="raspberry"
 
 # Install to disk tools including PiInstaller
-DEVICEREPO="https://github.com/volumio/platform-${DEVICEFAMILY}.git"
+#DEVICEREPO="https://github.com/volumio/platform-${DEVICEFAMILY}.git"
 
 ### What features do we want to target
 # TODO: Not fully implemented
 VOLVARIANT=no # Custom Volumio (Motivo/Primo etc)
 MYVOLUMIO=no
 VOLINITUPDATER=yes
-KIOSKMODE=no
-# KIOSKBROWSER=vivaldi
+KIOSKMODE=yes
+KIOSKBROWSER=vivaldi
 
 ## Partition info
-BOOT_START=0
-BOOT_END=96
+BOOT_START=1
+BOOT_END=385
+IMAGE_END=4673     # BOOT_END + 4288 MiB (/img squashfs)
 BOOT_TYPE=msdos    # msdos or gpt
 BOOT_USE_UUID=yes  # Add UUID to fstab
 INIT_TYPE="initv3"
-INIT_UUID_TYPE="pi" # Use block device GPEN if dynamic UUIDs are not handled.
-
+INIT_UUID_TYPE="pi"    # Use block device GPEN or PARTUUID fallback
 
 ## Plymouth theme management
 PLYMOUTH_THEME="volumio-player"	# Choices are: {volumio,volumio-logo,volumio-player}
@@ -49,8 +49,7 @@ INIT_PLYMOUTH_DISABLE="no"		# yes/no or empty. Removes plymouth initialization i
 UPDATE_PLYMOUTH_SERVICES_FOR_KMS_DRM="no"	# yes/no or empty. Replaces default plymouth systemd services if "yes" is selected
 
 # Modules that will be added to initramfs
-# MODULES=("drm" "fuse" "nls_cp437" "nls_iso8859_1" "nvme" "nvme_core" "overlay" "squashfs" "uas")
-MODULES=("fuse" "nls_iso8859_1" "nvme" "nvme_core" "overlay" "squashfs" "uas")
+MODULES=("drm" "fuse" "nls_cp437" "nls_iso8859_1" "nvme" "nvme_core" "overlay" "squashfs" "uas")
 # Packages that will be installed
 PACKAGES=( # Bluetooth packages
 	"bluez-firmware" "pi-bluetooth"
@@ -63,39 +62,12 @@ PACKAGES=( # Bluetooth packages
 	"wiringpi"
 	# Wireless firmware
 	"firmware-atheros" "firmware-ralink" "firmware-realtek" "firmware-brcm80211"
-	# Install to disk tools
-	"liblzo2-2" "squashfs-tools"
 )
 
 ### Device customisation
 # Copy the device specific files (Image/DTS/etc..)
 write_device_files() {
-	log "Running write_device_files" "ext"
-	log "Copying additional utils files" "ext"
-	pkg_root="${PLTDIR}/utils"
-
-	mkdir -p "${ROOTFSMNT}"/usr/local/bin/
-	declare -A CustomScripts=(
-		[PiInstaller.sh]="/PiInstaller.sh"
-	)
-	log "Adding ${#CustomScripts[@]} custom scripts to /usr/local/bin: " "" "${CustomScripts[@]}" "ext"
-	for script in "${!CustomScripts[@]}"; do
-		cp "${pkg_root}/${CustomScripts[$script]}" "${ROOTFSMNT}"/usr/local/bin/"${script}"
-		chmod +x "${ROOTFSMNT}"/usr/local/bin/"${script}"
-	done
-
-	log "Copying current partition data for use in runtime fast 'installToDisk'" "ext"
-	cat <<-EOF >"${ROOTFSMNT}/boot/partconfig.json"
-		{
-			"params":[
-			{"name":"boot_start","value":"$BOOT_START"},
-			{"name":"boot_end","value":"$BOOT_END"},
-			{"name":"volumio_end","value":"$IMAGE_END"},
-			{"name":"boot_type","value":"$BOOT_TYPE"}
-			]
-		}
-	EOF
-
+	:
 }
 
 write_device_bootloader() {
@@ -183,25 +155,11 @@ device_chroot_tweaks() {
 # TODO Try and streamline this!
 device_chroot_tweaks_pre() {
 	log "Changing initramfs module config to 'modules=list' to limit volumio.initrd size" "cfg"
-	# sed -i "s/MODULES=most/MODULES=list/g" /etc/initramfs-tools/initramfs.conf
+	sed -i "s/MODULES=most/MODULES=list/g" /etc/initramfs-tools/initramfs.conf
 
 	## Define parameters
 	declare -A PI_KERNELS=(
 		#[KERNEL_VERSION]="SHA|Branch|Rev"
-		[5.10.92]="ea9e10e531a301b3df568dccb3c931d52a469106|stable|1514"
-		[5.10.95]="770ca2c26e9cf341db93786d3f03c89964b1f76f|master|1521"
-		[5.15.84]="a99e144e939bf93bbd03e8066601a8d3eae640f7|stable|1613"
-		[5.15.92]="f5c4fc199c8d8423cb427e509563737d1ac21f3c|master|1627"
-		[6.1.19]="fa51258e0239eaf68d9dff9c156cec3a622fbacc|stable|1637"
-		[6.1.21]="f87ad1a3cb8c81e32dc3d541259291605ddaada0|stable|1642"
-		[6.1.47]="f87ad1a3cb8c81e32dc3d541259291605ddaada0|stable|1674"
-		[6.1.57]="12833d1bee03c4ac58dc4addf411944a189f1dfd|master|1688" # Support for Pi5
-		[6.1.58]="7b859959a6642aff44acdfd957d6d66f6756021e|master|1690"
-		[6.1.61]="d1ba55dafdbd33cfb938bca7ec325aafc1190596|master|1696"
-		[6.1.64]="01145f0eb166cbc68dd2fe63740fac04d682133e|master|1702"
-		[6.1.69]="ec8e8136d773de83e313aaf983e664079cce2815|master|1710"
-		[6.1.70]="fc9319fda550a86dc6c23c12adda54a0f8163f22|master|1712"
-		[6.1.77]="5fc4f643d2e9c5aa972828705a902d184527ae3f|master|1730"
 		[6.6.30]="3b768c3f4d2b9a275fafdb53978f126d7ad72a1a|master|1763"
 		[6.6.47]="a0d314ac077cda7cbacee1850e84a57af9919f94|master|1792"
 		[6.6.51]="d5a7dbe77b71974b9abb133a4b5210a8070c9284|master|1796"
@@ -215,36 +173,9 @@ device_chroot_tweaks_pre() {
 	MINOR_VERSION=$(echo "$KERNEL_VERSION" | cut -d '.' -f 2)
 	PATCH_VERSION=$(echo "$KERNEL_VERSION" | cut -d '.' -f 3)
 
-	# For bleeding edge, check what is the latest on offer
-	# Things *might* break, so you are warned!
-	if [[ ${RPI_USE_LATEST_KERNEL:-no} == yes ]]; then
-		branch=master
-		log "Using bleeding edge Rpi kernel" "info" "$branch"
-		RpiRepo="https://github.com/raspberrypi/rpi-firmware"
-		RpiRepoApi=${RpiRepo/github.com/api.github.com\/repos}
-		RpiRepoRaw=${RpiRepo/github.com/raw.githubusercontent.com}
-		log "Fetching latest kernel details from ${RpiRepo}" "info"
-		RpiGitSHA=$(curl --silent "${RpiRepoApi}/branches/${branch}")
-		readarray -t RpiCommitDetails <<<"$(jq -r '.commit.sha, .commit.commit.message' <<<"${RpiGitSHA}")"
-		log "Rpi latest kernel -- ${RpiCommitDetails[*]}" "info"
-		# Parse required info from `uname_string`
-		uname_string=$(curl --silent "${RpiRepoRaw}/${RpiCommitDetails[0]}/uname_string")
-		RpiKerVer=$(awk '{print $3}' <<<"${uname_string}")
-		KERNEL_VERSION=${RpiKerVer/+/}
-		RpiKerRev=$(awk '{print $1}' <<<"${uname_string##*#}")
-		PI_KERNELS[${KERNEL_VERSION}]+="${RpiCommitDetails[0]}|${branch}|${RpiKerRev}"
-		# Make life easier
-		log "Using rpi-update SHA:${RpiCommitDetails[0]} Rev:${RpiKerRev}" "${KERNEL_VERSION}" "dbg"
-		log "[${KERNEL_VERSION}]=\"${RpiCommitDetails[0]}|${branch}|${RpiKerRev}\"" "dbg"
-	fi
-
 	# List of custom firmware -
 	# github archives that can be extracted directly
 	declare -A CustomFirmware=(
-		[AlloPiano]="https://github.com/allocom/piano-firmware/archive/master.tar.gz"
-		[TauDAC]="https://github.com/taudac/modules/archive/rpi-volumio-${KERNEL_VERSION}-taudac-modules.tar.gz"
-		[Bassowl]="https://raw.githubusercontent.com/Darmur/bassowl-hat/master/driver/archives/modules-rpi-${KERNEL_VERSION}-bassowl.tar.gz"
-		[wm8960]="https://raw.githubusercontent.com/hftsai256/wm8960-rpi-modules/main/wm8960-modules-rpi-${KERNEL_VERSION}.tar.gz"
 		[brcmfmac43430b0]="https://raw.githubusercontent.com/volumio/volumio3-os-static-assets/master/firmwares/brcmfmac43430b0/brcmfmac43430b0.tar.gz"
 		[PiCustom]="https://raw.githubusercontent.com/Darmur/volumio-rpi-custom/main/output/modules-rpi-${KERNEL_VERSION}-custom.tar.gz"
 		[RPiUserlandTools]="https://github.com/volumio/volumio3-os-static-assets/raw/master/tools/rpi-softfp-vc.tar.gz"
@@ -274,14 +205,35 @@ device_chroot_tweaks_pre() {
 		rm "$key.tar.gz"
 	done
 
+	# Remove RPi0/RPi1 kernel
+	if [ -d "/lib/modules/${KERNEL_VERSION}+" ]; then
+		log "Removing ${KERNEL_VERSION}+ Kernel and modules" "info"
+		rm -rf /boot/kernel.img
+		rm -rf "/lib/modules/${KERNEL_VERSION}+"
+	fi
+
+	# Remove RPi2 kernel
+	if [ -d "/lib/modules/${KERNEL_VERSION}-v7+" ]; then
+		log "Removing ${KERNEL_VERSION}-v7+ Kernel and modules" "info"
+		rm -rf /boot/kernel7.img
+		rm -rf "/lib/modules/${KERNEL_VERSION}-v7+"
+	fi
+
+	# Remove RPi3/RPi4 32bit kernel
+	if [ -d "/lib/modules/${KERNEL_VERSION}-v7l+" ]; then
+		log "Removing ${KERNEL_VERSION}-v7l+ Kernel and modules" "info"
+		rm -rf /boot/kernel7l.img
+		rm -rf "/lib/modules/${KERNEL_VERSION}-v7l+"
+	fi
+
 	# Remove Pi5 16K kernel
 	if [ -d "/lib/modules/${KERNEL_VERSION}-v8_16k+" ]; then
-		log "Removing v8_16k+ (Pi5 16k) Kernel and modules" "info"
+		log "Removing ${KERNEL_VERSION}-v8_16k+ Kernel and modules" "info"
 		rm -rf /boot/kernel_2712.img
 		rm -rf "/lib/modules/${KERNEL_VERSION}-v8_16k+"
 	fi
 	if [ -d "/lib/modules/${KERNEL_VERSION}-v8-16k+" ]; then
-		log "Removing v8_16k+ (Pi5 16k) Kernel and modules" "info"
+		log "Removing v8-16k+ (Pi5 16k) Kernel and modules" "info"
 		rm -rf /boot/kernel_2712.img
 		rm -rf "/lib/modules/${KERNEL_VERSION}-v8-16k+"
 	fi
@@ -311,12 +263,6 @@ device_chroot_tweaks_pre() {
 		fi
 	done
 
-	if [ -e "/boot/overlays/i2s-dac.dtbo" ]
-	then
-		log "Make a copy of i2s-dac overlay, using the old name rpi-dac" "info"
-		cp /boot/overlays/i2s-dac.dtbo /boot/overlays/rpi-dac.dtbo
-	fi
-
 	log "Finished Kernel installation" "okay"
 
 	### Other Rpi specific stuff
@@ -324,6 +270,23 @@ device_chroot_tweaks_pre() {
 	wget -nv https://github.com/volumio/volumio3-os-static-assets/raw/master/custom-packages/libraspberrypi0/libraspberrypi0_1.20230509-buster-1_armhf.deb
 	dpkg -i libraspberrypi0_1.20230509-buster-1_armhf.deb
 	rm libraspberrypi0_1.20230509-buster-1_armhf.deb
+	### Plymouth backport
+	# TODO: Temporary only, backport for drm DSI rotation
+	if [[ "${VARIANT}" == motivo ]]; then
+		log "Installing custom backport plymouth packages" "info"
+		wget -nv https://github.com/volumio/volumio3-os-static-assets/raw/master/custom-packages/plymouth/01libplymouth5_0.9.5-4_arm.deb
+		wget -nv https://github.com/volumio/volumio3-os-static-assets/raw/master/custom-packages/plymouth/02plymouth_0.9.5-4_arm.deb
+		wget -nv https://github.com/volumio/volumio3-os-static-assets/raw/master/custom-packages/plymouth/plymouth-label_0.9.5-4_arm.deb
+		dpkg -i *plymouth*_0.9.5-4_arm.deb
+		rm *plymouth*_0.9.5-4_arm.deb
+		# Block upgrade of libplymouth from raspi repos
+		log "Blocking libplymouth upgrades from raspi repos" "info"
+		cat <<-EOF >"${ROOTFSMNT}/etc/apt/preferences.d/libplymouth"
+			Package: libplymouth4
+			Pin: release *
+			Pin-Priority: -1
+		EOF
+	fi
 
 	## Lets update some packages from raspbian repos now
 	apt-get update && apt-get -y upgrade
@@ -387,6 +350,18 @@ device_chroot_tweaks_pre() {
 	cat <<-EOF >/etc/ld.so.conf.d/00-vmcs.conf
 		/opt/vc/lib
 	EOF
+
+	log "Adding xorg configuration for kiosk mode with vc4-kms-v3d overlay" "info"
+	mkdir -p /etc/X11/xorg.conf.d
+	cat <<-EOF >/etc/X11/xorg.conf.d/99-vc4.conf
+		Section "OutputClass"
+			Identifier "vc4"
+			MatchDriver "vc4"
+			Driver "modesetting"
+			Option "PrimaryGPU" "true"
+		EndSection
+	EOF
+
 	log "Updating LD_LIBRARY_PATH" "info"
 	ldconfig
 
@@ -419,14 +394,26 @@ device_chroot_tweaks_pre() {
 		### DO NOT EDIT THIS FILE ###
 		### APPLY CUSTOM PARAMETERS TO userconfig.txt ###
 		initramfs volumio.initrd
-		gpu_mem=128
-		gpu_mem_256=32
-		gpu_mem_512=32
-		gpu_mem_1024=128
+		dtparam=ant2
+		dtparam=i2c=on
+		dtparam=i2c_arm=on
+		dtparam=uart0=on
+		dtparam=uart1=off
+		dtparam=audio=off
+		dtparam=nvme
+		dtparam=pciex1_gen=2
+		arm_64bit=1
+		gpu_mem=256
+		enable_uart=1
+		max_framebuffers=2
+		hdmi_force_hotplug=1
+		display_auto_detect=1
+		disable_splash=1
+		disable_overscan=1
 		max_usb_current=1
-		[pi5]
 		usb_max_current_enable=1
-		[all]
+		force_eeprom_read=0
+		start_x=1
 		include volumioconfig.txt
 		include userconfig.txt
 	EOF
@@ -435,22 +422,8 @@ device_chroot_tweaks_pre() {
 	cat <<-EOF >/boot/volumioconfig.txt
 		### DO NOT EDIT THIS FILE ###
 		### APPLY CUSTOM PARAMETERS TO userconfig.txt ###
-		[cm4]
 		dtoverlay=dwc2,dr_mode=host
-		otg_mode=1
-		[pi5]
-		dtoverlay=vc4-kms-v3d-pi5
-		# dtparam=uart0_console # Disabled by default
-		dtparam=nvme
-		dtparam=pciex1_gen=2
-		[all]
-		arm_64bit=0
-		dtparam=audio=on
-		audio_pwm_mode=2
-		dtparam=i2c_arm=on
-		disable_splash=1
-		hdmi_force_hotplug=1
-		force_eeprom_read=0
+		dtoverlay=vc4-kms-v3d-pi5,cma-384
 	EOF
 
 	log "Writing cmdline.txt file" "info"
@@ -478,7 +451,6 @@ device_chroot_tweaks_pre() {
 		log "Default image: change loglevel to value: 0, nodebug, no break  and no kmsg in cmdline.txt" "cfg"
 		KERNEL_LOGLEVEL="loglevel=0 nodebug use_kmsg=no" # Default to KERN_EMERG
 	fi
-
 	# Show splash
 	kernel_params+=("${SHOW_SPLASH}")
 	# Boot screen stuff
@@ -506,7 +478,7 @@ device_chroot_tweaks_pre() {
 	DISABLE_PN="net.ifnames=0"
 	kernel_params+=("${DISABLE_PN}")
 	# ALSA tweaks
-	kernel_params+=("snd-bcm2835.enable_compat_alsa=${compat_alsa}" "snd_bcm2835.enable_hdmi=1" "snd_bcm2835.enable_headphones=1")
+	kernel_params+=("snd-bcm2835.enable_compat_alsa=1")
 
 	# Further debug changes
 	if [[ $DEBUG_IMAGE == yes ]]; then
@@ -516,7 +488,6 @@ device_chroot_tweaks_pre() {
 		cat <<-EOF >/boot/debug.txt
 			# Enable serial console for boot debugging
 			enable_uart=1
-			dtoverlay=pi3-miniuart-bt
 		EOF
 		log "Enabling SSH" "dbg"
 		touch /boot/ssh
@@ -533,14 +504,11 @@ device_chroot_tweaks_pre() {
 	EOF
 
 	# Rerun depmod for new drivers
-	log "Finalising drivers installation with depmod on ${KERNEL_VERSION}+,-v7+, v7l+ and v8+" "info"
-	depmod "${KERNEL_VERSION}+"     # Pi 1, Zero, Compute Module
-	depmod "${KERNEL_VERSION}-v7+"  # Pi 2,3 CM3
-	depmod "${KERNEL_VERSION}-v7l+" # Pi 4 CM4
-	depmod "${KERNEL_VERSION}-v8+"  # Pi 4,5 CM4 64bit
-
-	log "Raspi Kernel and Modules installed" "okay"
-
+	if [ -d "/lib/modules/${KERNEL_VERSION}-v8+" ]; then
+		log "Finalising drivers installation with depmod on ${KERNEL_VERSION}-v8+"
+		depmod "${KERNEL_VERSION}-v8+" # CM5 with 64bit kernel
+	fi
+	log "CM5 Kernel and Modules installed" "okay"
 }
 
 # Will be run in chroot - Post initramfs
@@ -552,9 +520,9 @@ device_chroot_tweaks_post() {
 # Will be called by the image builder post the chroot, before finalisation
 device_image_tweaks_post() {
 	log "Running device_image_tweaks_post" "ext"
-	# Plymouth systemd services OVERWRITE
+    # Plymouth systemd services OVERWRITE
 	if [[ "${UPDATE_PLYMOUTH_SERVICES_FOR_KMS_DRM}" == yes ]]; then
-		log "Updating plymouth systemd services" "info"
-		cp -dR "${SRC}"/volumio/framebuffer/systemd/* "${ROOTFSMNT}"/lib/systemd
+        log "Updating plymouth systemd services" "info"
+        cp -dR "${SRC}"/volumio/framebuffer/systemd/* "${ROOTFSMNT}"/lib/systemd
 	fi
 }
