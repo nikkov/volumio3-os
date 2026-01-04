@@ -47,13 +47,6 @@ write_device_files() {
   cp -pdR "${PLTDIR}/${DEVICE}/lib/modules" "${ROOTFSMNT}/lib"
   cp -pdR "${PLTDIR}/${DEVICE}/lib/firmware" "${ROOTFSMNT}/lib"
 
-  log "copy alsa plugin" "ext"
-  cp -r "${PLTDIR}/${DEVICE}/volumio/s2mono/libasound_module_pcm_s2mono.so" "${ROOTFSMNT}/usr/lib/arm-linux-gnueabihf/alsa-lib"
-
-  log "copy s2mono plugin" "ext"
-  mkdir -p "${ROOTFSMNT}/data/plugins/audio_interface"
-  cp -r "${PLTDIR}/${DEVICE}/volumio/volumio-plugin/s2mono" "${ROOTFSMNT}/data/plugins/audio_interface"
-
   log "copy yandex-music plugin" "ext"
   mkdir -p "${ROOTFSMNT}/data/plugins/music_service"
   cp -r "${PLTDIR}/${DEVICE}/volumio/volumio-plugin/yandex_music" "${ROOTFSMNT}/data/plugins/music_service"
